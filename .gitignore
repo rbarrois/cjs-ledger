@@ -1,0 +1,8 @@
+# Temporary files
+.*.swp
+
+# Build-related files
+doc/_build/
+build/
+dist/
+target/
