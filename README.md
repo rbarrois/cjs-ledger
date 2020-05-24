@@ -1,4 +1,4 @@
-# micro-cjs-registry
+# cjs-ledger
 
 This package implements a minimal offline CommonJS-compliant registry.
 
@@ -15,8 +15,6 @@ Similar projects:
 
 ## Usage
 
-Run with `./micro-cjs-registry <path/to/packages> <listen-spec>`.
-*micro-cjs-registry* will scan the provided path, then start listening on the
+Run with `cjs-ledger <path/to/packages> <listen-spec>`.
+*cjs-ledger* will scan the provided path, then start listening on the
 provided port, or host:port, combination.
-
-A signal of `SIGUSR1` will trigger a path rescan.
