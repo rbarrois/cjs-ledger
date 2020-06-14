@@ -1,0 +1,221 @@
+#!/usr/bin/env python
+
+import argparse
+import base64
+import enum
+import json
+import logging
+import os.path
+import subprocess
+import sys
+import tempfile
+import urllib.parse
+import urllib.request
+import pathlib
+import typing as T
+
+
+logger = logging.getLogger(__name__)
+
+
+class ManifestFormat(enum.Enum):
+    FLAT = 'flat'
+    EBUILD = 'ebuild'
+    JSON = 'json'
+
+
+B64Hash = T.NewType('B64Hash', T.Text)
+HexHash = T.NewType('HexHash', T.Text)
+
+
+class HashType(enum.Enum):
+    NONE = 'none'
+    SHA1 = 'sha1'
+    SHA256 = 'sha256'
+    SHA384 = 'sha384'
+    SHA512 = 'sha512'
+
+
+Integrity = T.Dict[HashType, B64Hash]
+
+
+def b64_to_hex(b64: B64Hash) -> HexHash:
+    return HexHash(base64.b64decode(b64).hex())
+
+
+class TransitiveDep(T.NamedTuple):
+    scope: T.Optional[T.Text]
+    package: T.Text
+    version: T.Text
+    uri: urllib.parse.ParseResult
+    integrity: Integrity
+
+    @property
+    def fullname(self) -> T.Text:
+        if self.scope:
+            return '{}/{}'.format(self.scope, self.package)
+        else:
+            return self.package
+
+    @property
+    def destfile_flat(self) -> pathlib.Path:
+        if self.scope:
+            return pathlib.Path('{}--{}'.format(self.scope, self.destfile_base))
+        else:
+            return pathlib.Path(self.destfile_base)
+
+    @property
+    def destfile_nested(self) -> pathlib.Path:
+        if self.scope:
+            return pathlib.Path(self.scope) / self.destfile_base
+        else:
+            return pathlib.Path(self.destfile_base)
+
+    @property
+    def destfile_base(self) -> T.Text:
+        return '{}-{}.{}'.format(self.package, self.version, self.extension)
+
+    @property
+    def extension(self) -> T.Text:
+        return self.uri.path.split('.')[-1]
+
+    @property
+    def best_hash(self) -> T.Optional[T.Tuple[HashType, HexHash]]:
+        for hash_type in reversed(HashType):
+            if hash_type in self.integrity:
+                return hash_type, b64_to_hex(self.integrity[hash_type])
+        return None
+
+
+Registry = T.Dict[T.Text, T.Dict[T.Text, TransitiveDep]]
+Dependencies = T.Iterable[TransitiveDep]
+Downloads = T.Dict[pathlib.Path, TransitiveDep]
+
+
+def download(registry: Registry, destination: pathlib.Path, nested: bool = False) -> Downloads:
+    files = {}
+    for dep in iter_registry(registry):
+        origin = dep.uri
+        if nested:
+            target = destination / dep.destfile_nested
+        else:
+            target = destination / dep.destfile_flat
+
+        source = dep.uri.geturl()
+        logger.info("Downloading %s to %s", source, target)
+        with urllib.request.urlopen(source) as response:
+            if response.status != 200:
+                logger.error("Invalid response %s: %s", response.status, response.reason)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open('wb') as f:
+                chunk = response.read(1024)
+                while chunk:
+                    f.write(chunk)
+                    chunk = response.read(1024)
+            files[target] = dep
+    return files
+
+
+def iter_registry(registry: Registry) -> T.Iterable[TransitiveDep]:
+    for _name, versions in registry.items():
+        for _version, details in versions.items():
+            yield details
+
+
+def compute_dependencies(package: T.Text) -> Registry:
+    with tempfile.TemporaryDirectory() as workdir:
+        logger.info("Using temporary directory %s", workdir)
+        cache_dir = os.path.join(workdir, 'cache')
+        package_lock = os.path.join(workdir, 'package-lock.json')
+        logger.info("Installing %s via npm", package)
+        subprocess.run(
+            ['npm', 'install', '--cache', cache_dir, package],
+            cwd=workdir, check=True,
+        )
+        logger.info("Loading dependencies info from %s", package_lock)
+        with open(package_lock, 'r') as f:
+            data = json.load(f)
+
+        registry: Registry = {}
+        for dependency in iter_deps(data['dependencies']):
+            registry.setdefault(dependency.fullname, {})[dependency.version] = dependency
+        logger.info("Found %d transitive dependencies", len(registry))
+        return registry
+
+
+def iter_deps(dependencies: T.Dict[T.Text, T.Any]) -> T.Iterable[TransitiveDep]:
+    for key, value in dependencies.items():
+        hashtype, b64hash = value['integrity'].split('-', 1)
+        scope: T.Optional[T.Text] = None
+        if key.startswith('@'):
+            # Scoped package, e.g. @webassemblyjs/ast
+            scope, name = key.split('/')
+        else:
+            name = key
+        yield TransitiveDep(
+                scope=scope,
+                package=name,
+                version=value['version'],
+                uri=urllib.parse.urlparse(value['resolved']),
+                integrity={HashType(hashtype): B64Hash(b64hash)},
+            )
+        if value.get('dependencies'):
+            yield from iter_deps(value['dependencies'])
+
+
+
+def write_manifest(*, target: T.IO[T.Text], format: ManifestFormat, files: Downloads) -> None:
+    for path, dep in files.items():
+        alg, digest = dep.best_hash or (HashType.NONE, '')
+        target.write('{} {} {} {}\n'.format(
+            path,
+            dep.uri.geturl(),
+            alg.value,
+            digest,
+        ))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('package', help="Package whose dependencies should be downloaded")
+    parser.add_argument('manifest', type=argparse.FileType('w'), help="Path where a manifest will be written")
+    parser.add_argument(
+        '--nested-scopes', default=False, action='store_true',
+        help="With --download, create nested folders for scoped packages",
+    )
+    parser.add_argument('--download', help="Folder where downloaded dependencies will be stored")
+
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        format="%(levelname)s: %(message)s",
+        stream=sys.stderr,
+        level=logging.INFO,
+    )
+
+    registry = compute_dependencies(args.package)
+
+    if args.download:
+        files = download(
+            registry=registry,
+            destination=args.download,
+            nested=args.nested_scopes,
+        )
+    else:
+        files = {
+            pathlib.Path(dep.destfile_base): dep
+            for dep in iter_registry(registry)
+        }
+
+    write_manifest(
+        target=args.manifest,
+        format=ManifestFormat.FLAT,
+        files=files,
+    )
+    args.manifest.close()
+
+
+
+if __name__ == '__main__':
+    main()

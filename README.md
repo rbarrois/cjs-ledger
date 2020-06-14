@@ -18,3 +18,8 @@ Similar projects:
 Run with `cjs-ledger <path/to/packages> <listen-spec>`.
 *cjs-ledger* will scan the provided path, then start listening on the
 provided port, or host:port, combination.
+
+## cjs-manifest
+
+This helper file will download the dependencies of a file,
+compute their checksum, and add them to a simple manifest file.
