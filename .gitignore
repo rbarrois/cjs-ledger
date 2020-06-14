@@ -2,6 +2,9 @@
 .*.swp
 
 # Build-related files
+config.status
+Makefile
+
 doc/_build/
 build/
 dist/

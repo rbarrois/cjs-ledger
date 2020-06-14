@@ -1,0 +1,15 @@
+BINARIES := cjs-ledger cjs-manifest
+
+build:
+
+Makefile: configure Makefile.in
+	./config.status
+
+install:
+	install --target-directory=$(DESTDIR)@bindir@ $(BINARIES)
+
+clean:
+
+
+distclean:
+	@rm -f Makefile config.status

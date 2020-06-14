@@ -1,0 +1,113 @@
+#!/usr/bin/env python
+
+"""./configure script compatible with the autoconf CLI."""
+
+import argparse
+import enum
+import os
+import pathlib
+import shlex
+import stat
+import sys
+
+MAKEFILE_IN = 'Makefile.in'
+MAKEFILE_OUT = 'Makefile'
+CONFIG_STATUS = 'config.status'
+
+PACKAGE_NAME = 'cjs-ledger'
+
+CHOST = os.environ.get('CHOST', os.uname().machine)
+
+
+# Default values taken from `info make`
+class Directories(enum.Enum):
+    # Prefixes
+    prefix = '/usr/local'
+    exec_prefix = '{prefix}'
+
+    # Binaries
+    bindir = '{exec_prefix}/bin'
+    sbindir = '{exec_prefix}/sbin'
+    libexecdir = '{exec_prefix}/libexec'
+
+    # Read-only data
+    datarootdir = '{prefix}/share'
+    datadir = '{datarootdir}/' + PACKAGE_NAME
+    docdir = '{datarootdir}/doc/' + PACKAGE_NAME
+    infodir = '{datarootdir}/info'
+    htmldir = '{docdir}'
+    dvidir = '{docdir}'
+    pdfdir = '{docdir}'
+    psdir = '{docdir}'
+    mandir = '{datarootdir}/man'
+
+    # Configuration
+    sysconfdir = '{prefix}/etc'
+
+    # State
+    sharedstatedir = '{prefix}/com'
+    localstatedir = '{prefix}/var'
+    runstatedir = '{localstatedir}/run'
+
+    # Libraries
+    includedir = '{prefix}/include'
+    libdir = '{exec_prefix}/lib'
+
+    # Others
+    srcdir = '.'
+
+    @classmethod
+    def resolve(cls, args):
+        """Compute a list of resolved name => directory from provided args."""
+        results = {}
+        for directory in cls:
+            value = getattr(args, directory.name)
+            value = value.format(**results)
+            results[directory.name] = value
+
+        results['srcdir'] = os.path.abspath(results['srcdir'])
+        return results
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    for directory in Directories:
+        parser.add_argument(
+            '--' + directory.name.replace('_', '-'),
+            default=directory.value,
+            help="default: %s" % directory.value,
+        )
+    parser.add_argument('--host', default=CHOST)
+    parser.add_argument('--build', default=CHOST)
+
+    args = parser.parse_args()
+    directories = Directories.resolve(args)
+
+    srcdir = pathlib.Path(directories['srcdir'])
+
+    with open(srcdir / MAKEFILE_IN, 'r', encoding='utf-8') as makefile_in:
+        contents = makefile_in.read()
+
+    for name, value in directories.items():
+        contents = contents.replace('@{}@'.format(name), value)
+
+    with open(srcdir / MAKEFILE_OUT, 'w', encoding='utf-8') as makefile_out:
+        makefile_out.write(contents)
+
+    # https://www.gnu.org/prep/standards/html_node/Configuration.html
+    #
+    # The configure script should write a file named config.status which
+    # describes which configuration options were specified when the program
+    # was last configured. This file should be a shell script which, if run,
+    # will recreate the same configuration.
+
+    command_line = ' '.join(['./configure'] + [shlex.quote(arg) for arg in sys.argv[1:]])
+    with open(srcdir / CONFIG_STATUS, 'w', encoding='utf-8') as config_status:
+        config_status.write('#!/bin/sh\n')
+        config_status.write(command_line + '\n')
+
+    st = os.stat(srcdir / CONFIG_STATUS)
+    os.chmod(srcdir / CONFIG_STATUS, st.st_mode | stat.S_IEXEC)
+
+if __name__ == '__main__':
+    main()
