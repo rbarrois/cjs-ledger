@@ -13,3 +13,13 @@ clean:
 
 distclean:
 	@rm -f Makefile config.status
+
+
+
+TEST_MYPY = $(addprefix test-mypy-,$(BINARIES))
+test: $(TEST_MYPY)
+
+$(TEST_MYPY): test-mypy-%: %
+	mypy --strict $<
+
+.PHONY: test $(TEST_MYPY)

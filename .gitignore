@@ -9,3 +9,4 @@ doc/_build/
 build/
 dist/
 target/
+.mypy_cache/
