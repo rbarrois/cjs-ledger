@@ -146,6 +146,11 @@ def compute_dependencies(package: T.Text) -> Registry:
 
 def iter_deps(dependencies: T.Dict[T.Text, T.Any]) -> T.Iterable[TransitiveDep]:
     for key, value in dependencies.items():
+        if 'integrity' not in value or 'resolved' not in value:
+            # Not installed from a tarball
+            logger.warning("Skipping package %s, lacking URI / hash.", key)
+            continue
+
         hashtype, b64hash = value['integrity'].split('-', 1)
         scope: T.Optional[T.Text] = None
         if key.startswith('@'):
