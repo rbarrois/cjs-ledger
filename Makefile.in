@@ -18,10 +18,11 @@ release:
 	tools/release.sh
 
 
-TEST_MYPY = $(addprefix test-mypy-,$(BINARIES))
+TEST_MYPY = $(addprefix .test-mypy-,$(BINARIES))
 test: $(TEST_MYPY)
 
-$(TEST_MYPY): test-mypy-%: %
+.test-mypy-%: %
 	mypy --strict $<
+	touch $@
 
-.PHONY: test $(TEST_MYPY)
+.PHONY: test
