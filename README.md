@@ -19,6 +19,12 @@ Run with `cjs-ledger <path/to/packages> <listen-spec>`.
 *cjs-ledger* will scan the provided path, then start listening on the
 provided port, or host:port, combination.
 
+*cjs-ledger* can also execute a command while running in the background:
+`cjs-ledger --exec npm install foo` will run `npm install foo` while *cjs-ledger*
+accepts requests. The URL for *cjs-ledger* is exposed through the environment
+variable provided through `--exec-envvar`, defaulting to `NPM_CONFIG_REGISTRY`.
+
+
 ## cjs-manifest
 
 This helper file will download the dependencies of a file,

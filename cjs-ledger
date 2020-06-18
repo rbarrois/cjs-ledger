@@ -10,7 +10,9 @@ import pathlib
 import pprint
 import shutil
 import socket
+import subprocess
 import sys
+import threading
 import urllib.parse
 import typing as T
 
@@ -67,6 +69,11 @@ class Server(http.server.ThreadingHTTPServer):
     @property
     def base_url(self) -> Url:
         return Url('http://{}:{}/'.format(self.server_name, self.server_port))
+
+    def serve_background(self) -> threading.Thread:
+        thread = threading.Thread(target=self.serve_forever)
+        thread.start()
+        return thread
 
 
 def urljoin(base: Url, *parts: T.Text) -> Url:
@@ -213,6 +220,36 @@ def run_forever(repository: pathlib.Path, address: T.Text, port: int, write_url:
     server.serve_forever()
 
 
+def background_exec(command: T.List[T.Text], envvar: T.Text, repository: pathlib.Path, address: T.Text, port: int, write_url: T.Optional[T.IO[str]] = None) -> None:
+    registry = scan(repository)
+    server = Server(
+        repository=repository,
+        registry=registry,
+        address=address,
+        port=port,
+    )
+    logger.info("Serving %d packages", len(registry))
+    logger.info("Listening on %s", server.base_url)
+
+    if write_url:
+        logger.info("Written base URL to '%s'", write_url.name)
+        write_url.write(server.base_url)
+        write_url.close()
+
+    env = dict(os.environ)
+    env[envvar] = server.base_url
+    server_thread = server.serve_background()
+    logger.info("Started server in thread %s", server_thread.ident)
+
+    try:
+        logger.info("Launching command: %s", ' '.join(command))
+        subprocess.run(command, env=env)
+    finally:
+        logger.info("Shutting down server")
+        server.shutdown()
+        server_thread.join()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -231,6 +268,14 @@ def main() -> None:
         '--write-url', type=argparse.FileType('w'),
         help="File where the selected URL should be written",
     )
+    parser.add_argument(
+        '--exec-envvar', default='NPM_CONFIG_REGISTRY',
+        help="With --exec, expose the current url as this environment variable (default: NPM_CONFIG_REGISTRY)",
+    )
+    parser.add_argument(
+        '--exec', nargs=argparse.REMAINDER,
+        help="Execute a command while the server runs in the background.",
+    )
 
     args = parser.parse_args()
 
@@ -240,12 +285,22 @@ def main() -> None:
         level=logging.INFO,
     )
 
-    run_forever(
-        repository=args.repository,
-        address=args.bind,
-        port=args.port,
-        write_url=args.write_url,
-    )
+    if args.exec:
+        background_exec(
+            command=args.exec,
+            envvar=args.exec_envvar,
+            repository=args.repository,
+            address=args.bind,
+            port=args.port,
+            write_url=args.write_url,
+        )
+    else:
+        run_forever(
+            repository=args.repository,
+            address=args.bind,
+            port=args.port,
+            write_url=args.write_url,
+        )
 
 if __name__ == '__main__':
     main()
