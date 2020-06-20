@@ -1,0 +1,14 @@
+v0.3.0	    2020-06-20
+
+* Bugfix: Properly handle nested packages 
+
+
+v0.2.0	    2020-06-20
+
+* New: Include package.json metadata in API responses
+* New: Add integration tests
+* New: Enable multi-package manifest building in cjs-manifest
+
+v0.1.0	    2020-06-18
+
+Initial release
