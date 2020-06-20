@@ -46,3 +46,8 @@ The programs require:
 
 
 This programs is distributed under the GPLv3 license.
+
+
+## Testing
+
+Run `make test` to run tests; `make clean test` to force re-run all tests.

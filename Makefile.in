@@ -9,6 +9,7 @@ install:
 	install -D --target-directory=$(DESTDIR)@bindir@ $(BINARIES)
 
 clean:
+	$(MAKE) -C tests clean
 
 
 distclean:
@@ -20,6 +21,7 @@ release:
 
 TEST_MYPY = $(addprefix .test-mypy-,$(BINARIES))
 test: $(TEST_MYPY)
+	$(MAKE) -C tests
 
 .test-mypy-%: %
 	mypy --strict $<

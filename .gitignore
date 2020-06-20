@@ -3,7 +3,7 @@
 
 # Build-related files
 config.status
-Makefile
+/Makefile
 
 doc/_build/
 build/
