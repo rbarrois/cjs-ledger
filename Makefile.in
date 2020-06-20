@@ -19,11 +19,11 @@ release:
 	tools/release.sh
 
 
-TEST_MYPY = $(addprefix .test-mypy-,$(BINARIES))
+TEST_MYPY = $(addprefix .success-mypy-,$(BINARIES))
 test: $(TEST_MYPY)
 	$(MAKE) -C tests
 
-.test-mypy-%: %
+.success-mypy-%: %
 	mypy --strict $<
 	touch $@
 
