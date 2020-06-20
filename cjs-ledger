@@ -70,7 +70,7 @@ def scan(root: pathlib.Path) -> Registry:
         )
         registry.setdefault(package, {})[version] = PackageData(
             package_json=package_json,
-            archive=Archive(filename.relative_to(root)),
+            archive=Archive(filename),
         )
 
     for entry in os.scandir(root):
@@ -152,10 +152,11 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                 return self.fail(http.HTTPStatus.NOT_FOUND)
 
         if len(parts) > 2:
-            raw_archive = urllib.parse.unquote(parts[2])
-            if raw_archive != '{}-{}.tgz'.format(package, version):
+            requested_archive = urllib.parse.unquote(parts[2])
+            assert package is not None and version is not None
+            if requested_archive != '{}-{}.tgz'.format(package, version):
                 return self.fail()
-            archive = Archive(pathlib.Path(raw_archive))
+            archive = self.registry[package][version].archive
 
         if len(parts) > 3:
             return self.fail(http.HTTPStatus.NOT_FOUND)
@@ -187,7 +188,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         package_data = self.registry[name][version]
         metadata = dict(package_data.package_json)
         metadata['dist'] = {
-            'tarball': urljoin(self.base_url, name, version, str(package_data.archive))
+            'tarball': urljoin(self.base_url, name, version, '{}-{}.tgz'.format(name, version)),
         }
         return metadata
 
@@ -204,7 +205,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         self.json_response(self._version_data(name, version))
 
     def get_archive(self, archive: Archive) -> None:
-        path = self.repository / archive
+        path = archive
         try:
             f = open(path, 'rb')
         except OSError:
