@@ -28,7 +28,8 @@ variable provided through `--exec-envvar`, defaulting to `NPM_CONFIG_REGISTRY`.
 ## cjs-manifest
 
 This helper file will download the dependencies of a file,
-compute their checksum, and add them to a simple manifest file.
+compute their checksum, and add them to a simple manifest file:
+`cjs-manifest --destination=webpack.deps webpack webpack-cli`
 
 
 ## Installation

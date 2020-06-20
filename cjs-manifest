@@ -123,15 +123,15 @@ def iter_registry(registry: Registry) -> T.Iterable[TransitiveDep]:
             yield details
 
 
-def compute_dependencies(package: T.Text) -> Registry:
+def compute_dependencies(packages: T.List[T.Text]) -> Registry:
     with tempfile.TemporaryDirectory() as workdir:
         logger.info("Using temporary directory %s", workdir)
         cache_dir = os.path.join(workdir, 'cache')
         package_lock = os.path.join(workdir, 'package-lock.json')
-        logger.info("Installing %s via npm", package)
+        logger.info("Installing %s via npm", ', '.join(packages))
         subprocess.run(
-            ['npm', 'install', '--cache', cache_dir, package],
-            cwd=workdir, check=True,
+            ['npm', 'install', '--cache', cache_dir] + packages,
+            cwd=workdir, check=True, stdout=sys.stderr,
         )
         logger.info("Loading dependencies info from %s", package_lock)
         with open(package_lock, 'r') as f:
@@ -183,8 +183,8 @@ def write_manifest(*, target: T.IO[T.Text], format: ManifestFormat, files: Downl
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument('package', help="Package whose dependencies should be downloaded")
-    parser.add_argument('manifest', type=argparse.FileType('w'), help="Path where a manifest will be written")
+    parser.add_argument('package', nargs='+', help="Package(s) whose dependencies should be downloaded")
+    parser.add_argument('--destination', type=argparse.FileType('w'), default=sys.stdout, help="Path where a manifest will be written")
     parser.add_argument(
         '--nested-scopes', default=False, action='store_true',
         help="With --download, create nested folders for scoped packages",
@@ -214,11 +214,11 @@ def main() -> None:
         }
 
     write_manifest(
-        target=args.manifest,
+        target=args.destination,
         format=ManifestFormat.FLAT,
         files=files,
     )
-    args.manifest.close()
+    args.destination.close()
 
 
 
